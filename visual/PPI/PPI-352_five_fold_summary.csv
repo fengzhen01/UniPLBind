@@ -1,0 +1,2 @@
+Dataset,Fold,N_outer_train,N_primary_train,N_meta_validation,N_outer_test,Best epoch,Best meta loss,SEN,SPE,ACC,PRE,F1,MCC,AUROC,AUPRC
+PPI-352,Mean ± SD,,,,,,,65.565 ± 7.641,76.082 ± 5.975,74.585 ± 4.071,32.860 ± 2.095,43.578 ± 1.659,0.326 ± 0.021,0.785 ± 0.016,0.425 ± 0.023

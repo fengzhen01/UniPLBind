@@ -1,0 +1,42 @@
+pdb_id,classification,ec_numbers,functional_class,organism,title,resolution,method,chain_id
+4YB7,TRANSFERASE,[],Transferase,Campylobacter jejuni (strain RM1221),Adenosine triphosphate phosphoribosyltransferase from Campylobacter jejuni in complex with ATP,N/A,Unknown,A
+5A99,VIRAL PROTEIN,[],Other binding protein,Operophtera brumata cypovirus 19,Crystal structure of Operophtera brumata CPV19 polyhedra,N/A,Unknown,A
+5DN3,TRANSFERASE,[],Transferase,Homo sapiens,Aurora A in complex with ATP and AA35.,N/A,Unknown,A
+5E84,CHAPERONE,[],Chaperone,Homo sapiens,ATP-bound state of BiP,N/A,Unknown,F
+5DN6,HYDROLASE,[],Hydrolase,Unknown,ATP synthase from Paracoccus denitrificans,N/A,Unknown,A
+4XRU,PROTEIN BINDING,[],Other binding protein,Capnocytophaga gingivalis,Structure of Pnkp1/Rnl/Hen1 complex,N/A,Unknown,B
+4S1K,VIRAL PROTEIN,[],Other binding protein,Unknown,Structure of Uranotaenia sapphirina cypovirus (CPV17) polyhedrin at 100 K,N/A,Unknown,A
+5DB4,TRANSFERASE,[],Transferase,Mycobacterium abscessus,"Mycobacterium abscessus NadD in complex with Mg-ATP, space group I41",N/A,Unknown,A
+4ZGN,CELL CYCLE,[],Other binding protein,Schizosaccharomyces pombe,Structure Cdc123 complexed with the C-terminal domain of eIF2gamma,N/A,Unknown,A
+4ZS4,TRANSFERASE,[],Transferase,Dictyostelium discoideum,Crystal Structure of the Inactive Alpha-kinase Domain of Myosin-II Heavy Chain Kinase A (D756A) Complexed with ATP,N/A,Unknown,B
+4XVU,HYDROLASE/TRANSPORT PROTEIN,[],Hydrolase,Saccharomyces cerevisiae (ATCC 204508 / S288c),Structure of Get3 bound to the transmembrane domain of Nyv1,N/A,Unknown,H
+5BSM,LIGASE,[],Ligase,Nicotiana tabacum,Crystal structure of 4-coumarate:CoA ligase complexed with magnesium and Adenosine triphosphate,N/A,Unknown,A
+5BUR,LIGASE,[],Ligase,Bacillus subtilis (strain 168),"O-succinylbenzoate Coenzyme A Synthetase (MenE) from Bacillus Subtilis, in Complex with ATP and Magnesium Ion",N/A,Unknown,A
+5D6J,LIGASE/PROTEIN BINDING,[],Ligase,Mycobacterium smegmatis (strain ATCC 700084 / mc(2)155),Crystal structure of a mycobacterial protein,N/A,Unknown,A
+4X2D,STRUCTURAL PROTEIN,[],Structural protein,Peptoclostridium difficile,"Clostridium difficile Fic protein_0569 mutant S31A, E35A in complex with ATP",N/A,Unknown,A
+5ETL,TRANSFERASE/TRANSFERASE inhibitor,[],Transferase,Escherichia coli,"E. coli 6-hydroxymethyl-7,8-dihydropterin pyrophosphokinase complexed with AMPCPP and inhibitor at 1.82 angstrom resolution",N/A,Unknown,D
+3J94,HYDROLASE,[],Hydrolase,Cricetulus griseus,Structure of ATP-bound N-ethylmaleimide sensitive factor determined by single particle cryoelectron microscopy,N/A,Unknown,A
+3J8Y,MOTOR PROTEIN/STRUCTURAL PROTEIN,[],Structural protein,Homo sapiens,High-resolution structure of ATP analog-bound kinesin on microtubules,N/A,Unknown,K
+5APB,TRANSFERASE,[],Transferase,STREPTOMYCES SP.,"Structure of the adenylation domain THR1 involved in the biosynthesis of 4-chlorothreonine in streptomyces sp. Oh-5093, ligand bound structure",N/A,Unknown,A
+5CYR,TRANSCRIPTION,[],Nucleic acid binding,Thosea asigna virus,Crystal structure of Thosea asigna virus RNA-dependent RNA polymerase (RdRP) complexed with ATP and ssRNA,N/A,Unknown,B
+5F1C,MEMBRANE PROTEIN,[],Receptor,Amblyomma maculatum,Crystal structure of an invertebrate P2X receptor from the Gulf Coast tick in the presence of ATP and Zn2+ ion at 2.9 Angstroms,N/A,Unknown,B
+4RV7,TRANSFERASE,[],Transferase,Listeria monocytogenes EGD-e,Characterization of an essential diadenylate cyclase,N/A,Unknown,C
+4XBR,"Peptide,Transferase",[],Transferase,Homo sapiens,In cellulo Crystal Structure of PAK4 in complex with Inka,N/A,Unknown,A
+5E3I,LIGASE,[],Ligase,Acinetobacter baumannii,Crystal Structure of a Histidyl-tRNA synthetase from Acinetobacter baumannii with bound L-Histidine and ATP,N/A,Unknown,B
+4YDS,HYDROLASE,[],Hydrolase,Sulfolobus acidocaldarius,FlaH from Sulfolobus acidocaldarius with ATP and Mg-Ion,N/A,Unknown,A
+5COU,LIGASE,[],Ligase,Naegleria gruberi,Structure and mechanism of a eukaryal nick-sealing RNA ligase K170M+ATP,N/A,Unknown,A
+5ECK,LIGASE/TRANSFERASE,[],Transferase,Arabidopsis thaliana,"Crystal Structure of FIN219-FIP1 complex with JA, Ile and ATP",N/A,Unknown,A
+4XRU,PROTEIN BINDING,[],Other binding protein,Capnocytophaga gingivalis,Structure of Pnkp1/Rnl/Hen1 complex,N/A,Unknown,B
+4XHO,STRUCTURAL PROTEIN,[],Structural protein,Bacillus thuringiensis serovar kurstaki,Bacillus thuringiensis ParM with ATP,N/A,Unknown,A
+4RQV,TRANSFERASE/TRANSFERASE INHIBITOR,[],Transferase,Homo sapiens,Crystal structure of PDK1 in complex with ATP and the PIF-pocket ligand RS2,N/A,Unknown,A
+5D1O,LIGASE,[],Ligase,Methanothermobacter thermautotrophicus (strain ATCC 29096 / DSM 1053 / JCM 10044 / NBRC 100330 / Delta H),Archaeal ATP-dependent RNA ligase - form 1,N/A,Unknown,A
+5D15,LYASE,[],Lyase,Mycobacterium avium subsp. avium 10-9275,Crystal structure of an adenylyl cyclase Ma1120 from Mycobacterium avium in complex with ATP and calcium ion,N/A,Unknown,B
+4WVY,HYDROLASE,[],Hydrolase,Chaetomium thermophilum,Double-heterohexameric rings of full-length Rvb1(ATP)/Rvb2(apo),N/A,Unknown,A
+4XJX,HYDROLASE,[],Hydrolase,Escherichia coli,STRUCTURE OF MUTANT (E165H) OF THE HSDR SUBUNIT OF THE ECOR124I RESTRICTION ENZYME IN COMPLEX WITH ATP,N/A,Unknown,B
+5A98,VIRAL PROTEIN,[],Other binding protein,TRICHOPLUSIA NI CYPOVIRUS 15,Crystal structure of Trichoplusia ni CPV15 polyhedra,N/A,Unknown,A
+5EWG,TRANSFERASE/DNA,[],Transferase,Homo sapiens,Ternary complex of human DNA polymerase eta inserting rATP opposite an 8-Oxodeoxyguanosine Lesion,N/A,Unknown,A
+5D9H,TRANSFERASE,[],Transferase,Mus musculus,Crystal structure of SPAK (STK39) dimer in the basal activity state,N/A,Unknown,B
+4RX6,TRANSCRIPTION,[],Other binding protein,Bacillus subtilis subsp. subtilis,Structure of B. subtilis GlnK-ATP complex to 2.6 Angstrom,N/A,Unknown,B
+5EOU,PEPTIDE BINDING PROTEIN,[],Other binding protein,Pseudomonas aeruginosa (strain ATCC 15692 / PAO1 / 1C / PRS 101 / LMG 12228),Pseudomonas aeruginosa PilM:PilN1-12 bound to ATP,N/A,Unknown,B
+4WZY,TRANSFERASE,[],Transferase,Mycobacterium vanbaalenii,"Structure of mycobacterial maltokinase, the missing link in the essential GlgE-pathway (ATP complex)",N/A,Unknown,A
+4D79,LIGASE,[],Ligase,ESCHERICHIA COLI,"Crystal structure of E. coli tRNA N6-threonylcarbamoyladenosine dehydratase, TcdA, in complex with ATP at 1.768 Angstroem resolution",N/A,Unknown,C

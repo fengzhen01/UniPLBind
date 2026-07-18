@@ -1,0 +1,533 @@
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+from sklearn import metrics
+from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
+from LossFunction.focalLoss import FocalLoss_v2
+import torch.multiprocessing
+import datetime
+import copy
+
+
+# -------------------------- MetaModule & VNet --------------------------
+class MetaModule(nn.Module):     # 元学习基础模块 作用：1）递归获取当前网络中的所有可学习参数； 2）支持 CMW-Net 中的元梯度更新； 3）为 VNet 提供参数级别的可微更新能力
+    """基础 meta-learning 模块，可递归更新参数"""
+    def params(self):    #  返回当前模块所有参数
+        for name, param in self.named_params():
+            yield param
+
+    def named_leaves(self):     # 叶子节点参数， 当前默认无特殊叶子节点
+        return []
+
+    def named_submodules(self):    # 子模块接口（预留）
+        return []
+
+    def named_params(self, curr_module=None, memo=None, prefix=''):    #  递归遍历整个网络，返回所有参数
+        if memo is None:
+            memo = set()
+        if curr_module is None:
+            curr_module = self
+
+        if hasattr(curr_module, 'named_leaves'):    # 获取当前层参数
+            for name, p in curr_module.named_leaves():
+                if p is not None and p not in memo:
+                    memo.add(p)
+                    yield prefix + ('.' if prefix else '') + name, p
+        else:
+            for name, p in curr_module._parameters.items():
+                if p is not None and p not in memo:
+                    memo.add(p)
+                    yield prefix + ('.' if prefix else '') + name, p
+
+        for mname, module in curr_module.named_children():     # 递归获取子模块参数
+            submodule_prefix = prefix + ('.' if prefix else '') + mname
+            for name, p in self.named_params(module, memo, submodule_prefix):
+                yield name, p
+
+
+class MetaLinear(MetaModule):     #  支持元学习更新的全连接层； 本质上是 nn.Linear 的封装， 使其可以被 MetaModule 递归管理参数
+    def __init__(self, input_size, output_size, bias=True):
+        super(MetaLinear, self).__init__()
+        self.linear = nn.Linear(input_size, output_size, bias=bias)
+
+    def forward(self, x):
+        return self.linear(x)
+
+"""
+    CMW-Net 中的核心权重映射网络（Class-aware Meta Weight Net）
+    功能：
+    输入：每个残基对应的 loss 值（shape = [N,1]）    输出：每个残基的动态权重（shape = [N,1]）
+    本质：学习一个 loss -> weight 的非线性映射函数
+    在 ATP 位点预测中的作用： 1）提高困难正样本权重； 2）降低容易负样本权重； 3）抑制错误标注残基； 4）缓解类别不平衡问题
+"""
+class VNet(MetaModule):
+    """简单三层全连接网络，用于生成样本权重"""
+    def __init__(self, input=1, hidden1=100, hidden2=None, output=1, num_classes=1):
+        super(VNet, self).__init__()
+        self.input = input
+        self.output = output
+        if hidden2 is None:    # 如果没有设置第二隐藏层，则默认与第一层相同
+            hidden2 = hidden1
+        self.fc1 = MetaLinear(input, hidden1)    # 第一层：loss -> hidden
+        self.relu1 = nn.ReLU(True)
+        if hidden2 > 0:     # 第二层（可选）
+            self.fc2 = MetaLinear(hidden1, hidden2)
+            self.relu2 = nn.ReLU(True)
+            self.fc3 = MetaLinear(hidden2, output)
+        else:
+            self.fc2 = None
+            self.relu2 = None
+            self.fc3 = MetaLinear(hidden1, output)
+
+    def forward(self, x, num=None, c=None):     #  输入：x : 每个残基的 loss 值 [N,1]。   输出：out : 对应权重 [N,1]
+        out = self.fc1(x)      # 第一层映射
+        out = self.relu1(out)
+        if self.fc2 is not None:    # 第二层映射
+            out = self.fc2(out)
+            out = self.relu2(out)
+        out = self.fc3(out)      # 输出层
+        # 输出权重限制在 [0,1]
+        out = torch.sigmoid(out)    # Sigmoid 将权重压缩到 [0,1]，表示每个残基的重要性
+        return out
+
+
+def read_data_file_trip(istraining):
+    """读取SMB数据文件"""
+    if istraining:
+        # file_path = 'D:/fengzhen/1NucGMTL-main/DataSet/SMB/SMB_Train.txt'
+        file_path = 'D:/fengzhen/1NucGMTL-main/DataSet/ATP/ATP542.txt'
+    else:
+        file_path = 'D:/fengzhen/1NucGMTL-main/DataSet/ATP/ATP41.txt'
+
+    with open(file_path, 'r') as f:
+        data = f.readlines()
+
+    results = []
+    block = len(data) // 2
+    for index in range(block):
+        item = data[index * 2 + 0].split()
+        name = item[0].strip()
+        results.append(name)
+
+    return results
+
+
+def coll_paddding(batch_traindata):
+    batch_traindata.sort(key=lambda data: len(data[0]), reverse=True)
+    feature_plms = []
+    train_y = []
+    task_ids = []
+
+    for data in batch_traindata:
+        feature_plms.append(data[0])
+
+        train_y.append(data[1])
+        task_ids.append(data[2])
+    data_length = [len(data) for data in feature_plms]
+
+    feature_plms = torch.nn.utils.rnn.pad_sequence(feature_plms, batch_first=True, padding_value=0)
+    train_y = torch.nn.utils.rnn.pad_sequence(train_y, batch_first=True, padding_value=0)
+    task_ids = torch.nn.utils.rnn.pad_sequence(task_ids, batch_first=True, padding_value=0)
+    return feature_plms, train_y, task_ids, torch.tensor(data_length)
+
+
+class BioinformaticsDataset(Dataset):
+    # X: list of filename
+    def __init__(self, X):
+        self.X = X
+
+    def __getitem__(self, index):
+        filename = self.X[index]
+        # esm_embedding1280 prot_embedding  esm_embedding2560 msa_embedding
+        df0 = pd.read_csv('D:/fengzhen/3embedding/ProstT5_embedding_542+41/' + filename + '.data', header=None)
+        prot0 = df0.values.astype(float).tolist()
+        prot = torch.tensor(prot0)
+
+        # df1 = pd.read_csv('D:/fengzhen/3embedding/ProtBert_embedding_542+41/' + filename + '.data', header=None)
+        # prot1 = df1.values.astype(float).tolist()
+        # prot1 = torch.tensor(prot1)
+
+        # # combine two plms
+        # prot = torch.cat((prot0, prot1), dim=1)  # prot0#
+        #
+        # min_len = min(prot0.size(0), prot1.size(0))      # 需要
+        # prot = torch.cat((prot0[:min_len], prot1[:min_len]), dim=1)     # 需要
+
+        df2 = pd.read_csv('D:/fengzhen/3embedding/label/' + filename + '.label', header=None)
+        label = df2.values.astype(int).tolist()
+        label = torch.tensor(label)
+        # reduce 2D to 1D
+        label = torch.squeeze(label)
+        task_id_label = torch.ones(prot.shape[0], dtype=int) * 0
+
+        return prot, label, task_id_label
+
+    def __len__(self):
+        return len(self.X)
+
+
+class AttentionModel(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super(AttentionModel, self).__init__()
+        self.q = nn.Linear(in_dim, out_dim)
+        self.k = nn.Linear(in_dim, out_dim)
+        self.v = nn.Linear(in_dim, out_dim)
+        self._norm_fact = 1 / torch.sqrt(torch.tensor(out_dim))
+
+    def forward(self, plms1, seqlengths):
+        Q = self.q(plms1)
+        K = self.k(plms1)
+        V = self.v(plms1)
+        atten = self.masked_softmax((torch.bmm(Q, K.permute(0, 2, 1))) * self._norm_fact, seqlengths)
+        output = torch.bmm(atten, V)
+        return output + V
+
+    def create_src_lengths_mask(self, batch_size: int, src_lengths):
+        max_src_len = int(src_lengths.max())
+        src_indices = torch.arange(0, max_src_len).unsqueeze(0).type_as(src_lengths)
+        src_indices = src_indices.expand(batch_size, max_src_len)
+        src_lengths = src_lengths.unsqueeze(dim=1).expand(batch_size, max_src_len)
+        # returns [batch_size, max_seq_len]
+        return (src_indices < src_lengths).int().detach()
+
+    def masked_softmax(self, scores, src_lengths, src_length_masking=True):
+        if src_length_masking:
+            bsz, src_len, max_src_len = scores.size()
+            src_mask = self.create_src_lengths_mask(bsz, src_lengths)
+            src_mask = src_mask.unsqueeze(2)
+            src_mask = src_mask.to(scores.device)  # <-- 关键
+            scores = scores.permute(0, 2, 1)
+            scores = scores.masked_fill(src_mask == 0, -np.inf)
+            scores = scores.permute(0, 2, 1)
+        return F.softmax(scores.float(), dim=-1)
+
+
+class FeatureExtractor(nn.Module):
+    def __init__(self, inputdim):
+        super(FeatureExtractor, self).__init__()
+        self.inputdim = inputdim
+
+        self.ms1cnn1 = nn.Conv1d(self.inputdim, 512, 1, padding='same')
+        self.ms1cnn2 = nn.Conv1d(512, 256, 1, padding='same')
+        self.ms1cnn3 = nn.Conv1d(256, 128, 1, padding='same')
+
+        self.ms2cnn1 = nn.Conv1d(self.inputdim, 512, 3, padding='same')
+        self.ms2cnn2 = nn.Conv1d(512, 256, 3, padding='same')
+        self.ms2cnn3 = nn.Conv1d(256, 128, 3, padding='same')
+
+        self.ms3cnn1 = nn.Conv1d(self.inputdim, 512, 5, padding='same')
+        self.ms3cnn2 = nn.Conv1d(512, 256, 5, padding='same')
+        self.ms3cnn3 = nn.Conv1d(256, 128, 5, padding='same')
+
+        self.relu = nn.ReLU(True)
+
+        self.AttentionModel1 = AttentionModel(512, 128)
+        self.AttentionModel2 = AttentionModel(256, 128)
+        self.AttentionModel3 = AttentionModel(128, 128)
+
+    def forward(self, prot_input, seqlengths):
+        prot_input_share = prot_input.permute(0, 2, 1)
+
+        m1 = self.relu(self.ms1cnn1(prot_input_share))
+        m2 = self.relu(self.ms2cnn1(prot_input_share))
+        m3 = self.relu(self.ms3cnn1(prot_input_share))
+
+        att = m1 + m2 + m3
+        att = att.permute(0, 2, 1)
+        s1 = self.AttentionModel1(att, seqlengths)
+
+        m1 = self.relu(self.ms1cnn2(m1))
+        m2 = self.relu(self.ms2cnn2(m2))
+        m3 = self.relu(self.ms3cnn2(m3))
+
+        att = m1 + m2 + m3
+        att = att.permute(0, 2, 1)
+        s2 = self.AttentionModel2(att, seqlengths)
+
+        m1 = self.relu(self.ms1cnn3(m1))
+        m2 = self.relu(self.ms2cnn3(m2))
+        m3 = self.relu(self.ms3cnn3(m3))
+
+        att = m1 + m2 + m3
+        att = att.permute(0, 2, 1)
+        s3 = self.AttentionModel3(att, seqlengths)
+
+        mscnn = m1 + m2 + m3
+        mscnn = mscnn.permute(0, 2, 1)
+        s = s1 + s2 + s3
+
+        return mscnn + s
+
+
+class Module(nn.Module):
+    def __init__(self, inputdim, istrain):
+        super(Module, self).__init__()
+        self.istrain = istrain
+        self.inputdim = inputdim
+        self.feature_extractor = FeatureExtractor(self.inputdim)
+
+        # 单任务：只有一个任务头
+        self.task_fc = nn.Sequential(
+            nn.Linear(128, 512),
+            nn.Dropout(0.5),
+            nn.Linear(512, 64),
+            nn.Dropout(0.5),
+            nn.Linear(64, 2)
+        )
+
+    def forward(self, prot_input, datalengths):
+        features = self.feature_extractor(prot_input, datalengths)
+        # 单任务：直接返回一个输出
+        output = self.task_fc(features)
+        return output
+
+
+# 假设 Module, FeatureExtractor, BioinformaticsDataset, coll_paddding 已经定义
+# VNet 类也已经定义
+# device 初始化
+cuda = torch.cuda.is_available()
+device = torch.device("cuda" if cuda else "cpu")
+torch.multiprocessing.set_sharing_strategy('file_system')
+
+"""
+    训练函数：结合主网络 + CMW-Net（VNet） + Focal Loss
+    输入：itrainfile : 训练数据标识列表（此处实际未使用，因为读取固定路径）； modelstoreapl : 模型保存路径； valfile : 验证集文件列表（默认取训练集前20%）
+    输出：model : 训练后的主模型； vnet : 训练后的 VNet（CMW-Net 元权重网络）
+"""
+# -------------------------- Train with VNet --------------------------
+def train_vnet(itrainfile, modelstoreapl, valfile=None):
+    # 主模型
+    model = Module(1024, True).to(device)     # 主模型， 多尺度 CNN + Attention + 分类头
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+
+    # VNet
+    vnet = VNet(input=1, hidden1=100, output=1, num_classes=1).to(device)    # VNet（CMW-Net）
+    # optimizer_vnet = torch.optim.Adam(vnet.parameters(), lr=1e-5)
+    optimizer_vnet = torch.optim.Adam(vnet.parameters(), lr=1e-4)
+
+    # epochs = 30
+    epochs = 40
+    patience = 5
+
+    # 数据集
+    train_files = read_data_file_trip(True)
+    train_set = BioinformaticsDataset(train_files)
+    # train_loader = DataLoader(dataset=train_set, batch_size=16, shuffle=True,
+    #                           collate_fn=coll_paddding, num_workers=16, pin_memory=True,
+    #                           persistent_workers=True)
+    train_loader = DataLoader(dataset=train_set, batch_size=16,
+                              pin_memory=False,  # <- 改成 False
+                              shuffle=True,
+                              num_workers=0,  # <- 改成 0
+                              collate_fn=coll_paddding)
+
+    if valfile is None:
+        valfile = train_files[:len(train_files)//5]
+    val_set = BioinformaticsDataset(valfile)
+    val_loader = DataLoader(dataset=val_set, batch_size=16, shuffle=True,
+                            collate_fn=coll_paddding, num_workers=8, pin_memory=True,
+                            persistent_workers=True)
+
+    # best_val_loss = 1e5
+    best_val_loss = 3000
+    best_epo = 0
+    counter = 0
+
+    for epo in range(epochs):     # Epoch 循环
+        model.train()
+        epoch_loss_train = 0
+        nb_train = 0
+
+        for prot_xs, data_ys, taskids, lengths in train_loader:     # batch 循环
+            prot_xs, data_ys, lengths = prot_xs.to(device), data_ys.to(device), lengths.to('cpu')
+
+            # 主模型正向
+            # ===== 主模型前向 =====
+            outputs = model(prot_xs, lengths)
+
+            # 展平 batch 和残基维度，用于计算每个残基的 loss
+            outputs_flat = outputs.view(-1, 2)
+            labels_flat = data_ys.view(-1)
+
+            # ===== 使用 Focal Loss 逐样本版本 =====
+            # alpha = torch.tensor([1.0, 50.0]).to(device)
+            alpha = torch.tensor([1.0, 15.0]).to(device)    # 逐残基 Focal Loss。 alpha 设置正负样本比例（针对严重类别不平衡）
+
+            ce_loss = F.cross_entropy(outputs_flat, labels_flat, reduction='none')
+            pt = torch.exp(-ce_loss)
+
+            alpha_t = alpha[labels_flat.long()]
+            gamma = 2
+            loss_per_residue = alpha_t * (1 - pt) ** gamma * ce_loss    # Focal Loss: 对困难样本赋更大权重
+            loss_per_residue = loss_per_residue.view(-1, 1)
+
+            # VNet 输出每个残基权重， 前3轮不使用 VNet（保证初期稳定训练）
+            if epo < 3:      # CMW-Net：动态残基权重 =====
+                v_lambda = torch.ones_like(loss_per_residue).squeeze(1).to(device)
+            else:
+                v_lambda = vnet(loss_per_residue.detach(),     # VNet 输入每个残基的 loss， 输出每个残基的权重 [0,1]
+                                torch.zeros_like(loss_per_residue).to(device),     # dummy num
+                                torch.zeros_like(loss_per_residue).to(device))     # dummy c
+                v_lambda = v_lambda.squeeze(1)
+
+                # 限制权重范围，避免过小导致梯度消失
+                v_lambda = torch.clamp(v_lambda, min=0.1, max=1.0)     # 限制权重范围，避免梯度消失
+
+            weighted_loss = torch.mean(loss_per_residue.squeeze() * v_lambda)     # 主网络加权损失
+
+            # Meta-update VNet using validation batch ， 元更新 VNet（Meta-update using validation batch）
+            val_prot, val_label, _, val_lengths = next(iter(val_loader))
+            val_prot, val_label = val_prot.to(device), val_label.to(device)
+            val_lengths = val_lengths.to('cpu')
+
+            meta_model = copy.deepcopy(model)     # 构建 meta 模型副本
+            meta_model.train()
+            grads = torch.autograd.grad(weighted_loss, list(meta_model.parameters()),    # 计算主模型梯度
+                                        create_graph=True, allow_unused=True)
+            lr_inner = 0.0001
+            for p, g in zip(meta_model.parameters(), grads):     # 用梯度更新 meta_model
+                if g is not None:
+                    p.data -= lr_inner * g
+
+            val_outputs = meta_model(val_prot, val_lengths)     # 计算 meta_loss（验证集）并更新 VNet
+            val_outputs = val_outputs.view(-1, 2)
+            val_label_flat = val_label.view(-1)
+            # meta_val_loss = nn.CrossEntropyLoss(reduction='mean')(val_outputs, val_label_flat)
+            # val_alpha = torch.tensor([1.0, 50.0]).to(device)
+            val_alpha = torch.tensor([1.0, 15.0]).to(device)
+
+            ce_val = F.cross_entropy(val_outputs, val_label_flat, reduction='none')
+            pt_val = torch.exp(-ce_val)
+            alpha_val = val_alpha[val_label_flat.long()]
+
+            # meta_val_loss = (alpha_val * (1 - pt_val) ** gamma * ce_val).mean()
+            meta_val_loss = (alpha_val * (1 - pt_val) ** gamma * ce_val).mean()
+
+            optimizer_vnet.zero_grad()
+            meta_val_loss.backward()     # 元梯度
+            optimizer_vnet.step()        # 更新 VNet 参数
+
+            # ===== 更新主模型参数（非常关键）=====
+            optimizer.zero_grad()
+            weighted_loss.backward()
+            optimizer.step()
+
+            epoch_loss_train += weighted_loss.item()
+            nb_train += 1
+
+        epoch_loss_avg = epoch_loss_train / nb_train       # Epoch 统计
+        print('Epoch', epo, 'Avg weighted loss:', epoch_loss_avg)
+
+        if epoch_loss_avg < best_val_loss:
+            torch.save(model.state_dict(), modelstoreapl)
+            best_val_loss = epoch_loss_avg
+            best_epo = epo
+            counter = 0
+        else:
+            counter += 1
+            if counter >= patience:
+                print("Early stopping triggered.")
+                break
+
+    print('Best loss:', best_val_loss, 'Best epoch:', best_epo)
+    return model, vnet
+
+# -------------------------- Test测试函数： 前向输出主网络预测概率； 展平输出并 softmax； 保存每个残基正类概率
+def test(modelstoreapl, testfile=None):
+    model = Module(1024, False).to(device)
+    model.load_state_dict(torch.load(modelstoreapl))
+    model.eval()
+
+    if testfile is None:
+        test_files = read_data_file_trip(False)
+    else:
+        test_files = testfile
+
+    test_set = BioinformaticsDataset(test_files)
+    test_loader = DataLoader(dataset=test_set, batch_size=16,
+                             pin_memory=False,   # <- 改成 False
+                             shuffle=False,
+                             num_workers=0,      # <- 改成 0
+                             collate_fn=coll_paddding)
+
+    predicted_probs = []
+    labels_actual = []
+    labels_predicted = []
+
+    with torch.no_grad():
+        for prot_xs, data_ys, taskids, lengths in test_loader:
+            prot_xs, data_ys = prot_xs.to(device), data_ys.to(device)
+            lengths = lengths.to('cpu')
+
+            # 前向
+            outputs = model(prot_xs, lengths)
+
+            # 展平 batch
+            outputs_flat = outputs.view(-1, 2)
+
+            # softmax 概率
+            pred_probs = F.softmax(outputs_flat, dim=1).cpu()
+
+            # 保存预测结果
+            predicted_probs.extend(pred_probs[:, 1])  # 正类概率
+            labels_predicted.extend(torch.argmax(pred_probs, dim=1).cpu())
+            labels_actual.extend(data_ys.view(-1).cpu())
+
+    return labels_actual, labels_predicted, predicted_probs
+
+# -------------------------- Metrics --------------------------
+def printresult(ligand, actual_label, predict_prob, predict_label):
+    print('\n---------', ligand, '-------------')
+    auc = metrics.roc_auc_score(actual_label, predict_prob)
+    precision_1, recall_1, threshold_1 = metrics.precision_recall_curve(actual_label, predict_prob)
+    aupr_1 = metrics.auc(recall_1, precision_1)
+    acc = metrics.accuracy_score(actual_label, predict_label)
+    tn, fp, fn, tp = metrics.confusion_matrix(actual_label, predict_label).ravel()
+    mcc = metrics.matthews_corrcoef(actual_label, predict_label)
+    sensitivity = tp / (tp + fn)
+    specificity = tn / (tn + fp)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn)
+    f1score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    youden = sensitivity + specificity - 1
+
+    print(f'acc: {acc}, sensitivity: {sensitivity}, specificity: {specificity}, precision: {precision}')
+    print(f'MCC: {mcc}, F1: {f1score}, AUC: {auc}, AUPR: {aupr_1}, Youden: {youden}')
+    return sensitivity, specificity, acc, precision, mcc, auc, aupr_1
+
+# -------------------------- Main --------------------------
+if __name__ == "__main__":
+    tasks = ['ATP']
+    circle = 1
+    a = str(datetime.datetime.now()).replace(':','_')
+
+    totalkv = {task: [] for task in tasks}
+    storename = '_'.join(tasks)
+
+    for i in range(circle):
+        storeapl = f'RGMTL/Result_{storename}_{i}_{a}.pkl'
+        train_vnet(tasks, storeapl)
+        labels_actual, labels_predicted, predicted_probs = test(storeapl)
+        sensitivity, specificity, acc, precision, mcc, auc, aupr_1 = printresult('ATP', labels_actual, predicted_probs, labels_predicted)
+        totalkv['ATP'].append([sensitivity, specificity, acc, precision, mcc, auc, aupr_1])
+
+    with open(f'RGMTL/Result_{storename}_{a}.txt', 'w') as f:
+        np.savetxt(f, totalkv['ATP'], delimiter=',', fmt='%s', footer='ATP Results')
+        m = np.mean(totalkv['ATP'], axis=0)
+        np.savetxt(f, [m], delimiter=',', fmt='%s', footer='Average Results')
+
+
+'''
+CMW-Net 本质是一个“残基级权重生成器”，输入每个残基 loss → 输出权重 → 调节梯度贡献
+它解决了：
+类别极度不平衡
+噪声样本干扰
+困难正样本贡献不足
+主模型结构不变，只是训练时梯度被加权 → 整体性能提升，尤其是 precision 与 F1
+'''
+
+
+

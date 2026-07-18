@@ -1,0 +1,2 @@
+Dataset,Fold,N_outer_train,N_primary_train,N_meta_validation,N_outer_test,Best epoch,Best meta loss,SEN,SPE,ACC,PRE,F1,MCC,AUROC,AUPRC
+ATP-387,Mean ± SD,,,,,,,75.802 ± 3.674,94.208 ± 0.499,93.473 ± 0.574,35.272 ± 2.603,48.115 ± 2.914,0.489 ± 0.029,0.940 ± 0.013,0.569 ± 0.036

@@ -1,0 +1,6 @@
+Number of proteins: 639
+Number of binding residues, numP: 8490
+Number of non-binding residues, numN: 141840
+Total residues: 150330
+Ratio = numP / numN: 0.059856
+Positive ratio = numP / total residues: 5.65%
