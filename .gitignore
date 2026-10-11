@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# IDE and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Large generated residue embeddings and model artifacts
+embeddings/*
+!embeddings/README.md
+outputs/*
+!outputs/.gitkeep
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.npy
+*.npz
+
+# Local configuration (the example file is versioned)
+configs/datasets.local.json
+

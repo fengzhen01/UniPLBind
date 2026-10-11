@@ -1,0 +1,59 @@
+{
+  "tasks": {
+    "protein": {
+      "development_file": "../data/protein/PPI-Train352.txt",
+      "independent_test_file": "../data/protein/PPI-Test70.txt",
+      "prostt5_dir": "../embeddings/protein/prostt5",
+      "ankh_dir": "../embeddings/protein/ankh",
+      "label_dir": "../embeddings/protein/labels",
+      "input_dim": 2560,
+      "class_alpha": [1.0, 5.0]
+    },
+    "dna": {
+      "development_file": "../data/dna/DNA_Train.txt",
+      "independent_test_file": "../data/dna/DNA_Test.txt",
+      "prostt5_dir": "../embeddings/dna/prostt5",
+      "ankh_dir": "../embeddings/dna/ankh",
+      "label_dir": "../embeddings/dna/labels",
+      "input_dim": 2560,
+      "class_alpha": [1.0, 2.0]
+    },
+    "rna": {
+      "development_file": "../data/rna/RNA_Train.txt",
+      "independent_test_file": "../data/rna/RNA_Test.txt",
+      "prostt5_dir": "../embeddings/rna/prostt5",
+      "ankh_dir": "../embeddings/rna/ankh",
+      "label_dir": "../embeddings/rna/labels",
+      "input_dim": 2560,
+      "class_alpha": [1.0, 5.0]
+    },
+    "peptide": {
+      "development_file": "../data/peptide/PepPI-Train640.txt",
+      "independent_test_file": "../data/peptide/PepPI-Test639.txt",
+      "prostt5_dir": "../embeddings/peptide/prostt5",
+      "ankh_dir": "../embeddings/peptide/ankh",
+      "label_dir": "../embeddings/peptide/labels",
+      "input_dim": 2560,
+      "class_alpha": [1.0, 5.0]
+    },
+    "atp": {
+      "development_file": "../data/atp/ATP387.txt",
+      "independent_test_file": "../data/atp/ATP41.txt",
+      "prostt5_dir": "../embeddings/atp/prostt5",
+      "ankh_dir": "../embeddings/atp/ankh",
+      "label_dir": "../embeddings/atp/labels",
+      "input_dim": 2560,
+      "class_alpha": [1.0, 10.0]
+    },
+    "small_molecule": {
+      "development_file": "../data/small_molecule/SMB_Train.txt",
+      "independent_test_file": "../data/small_molecule/SMB_Test.txt",
+      "prostt5_dir": "../embeddings/small_molecule/prostt5",
+      "ankh_dir": "../embeddings/small_molecule/ankh",
+      "label_dir": "../embeddings/small_molecule/labels",
+      "input_dim": 2560,
+      "class_alpha": [1.0, 15.0]
+    }
+  }
+}
+

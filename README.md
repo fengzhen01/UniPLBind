@@ -1,109 +1,163 @@
-# UniPLBind: A Unified Model for Protein–Ligand Binding Site Prediction via Dynamic Residue Reweighting and Collaborative Optimization of PLM Representations
+# UniPLBind
 
-## 1. Overview
+**Unified protein–ligand binding-site prediction with collaborative protein
+language-model representations and meta-learned dynamic residue reweighting**
 
-Accurate identification of protein–ligand binding residues is crucial for understanding molecular recognition, annotating protein functions, and facilitating drug discovery. Although numerous computational methods have been developed for ligand-specific binding-site prediction, most existing predictors are optimized for a single ligand type, which limits their applicability across heterogeneous ligand-binding scenarios.
+UniPLBind is a sequence-based framework for residue-level binding-site
+prediction across six ligand modalities: **protein, DNA, RNA, peptide, ATP,
+and small molecule**. It integrates complementary ProstT5 and Ankh residue
+representations, decodes local and long-range sequence context with a
+multi-scale CNN–attention network, and uses a V-Net meta-learning branch to
+adapt residue weights under severe class imbalance.
 
-To address this limitation, we propose **UniPLBind**, a unified sequence-based framework for residue-level protein–ligand binding-site prediction across diverse ligand modalities. UniPLBind integrates complementary protein language model (PLM) representations, dynamic residue reweighting, focal loss, and a multi-scale CNN–attention architecture to improve binding-site recognition under severe class imbalance.
+## Method overview
 
-Specifically, UniPLBind systematically evaluates multiple PLM embeddings and identifies complementary representation combinations for residue-level prediction. Dynamic residue reweighting adaptively adjusts the contribution of individual residues during training, helping the model focus on informative and hard-to-classify binding residues. Meanwhile, the multi-scale CNN module captures local contextual patterns, and the attention mechanism further models broader residue dependencies.
+1. **Collaborative PLM representation** — 1,024-dimensional ProstT5 and
+   1,536-dimensional Ankh residue embeddings are concatenated into a
+   2,560-dimensional input representation.
+2. **Multi-scale sequence decoding** — parallel 1D convolutions with kernel
+   sizes 1, 3, and 5 capture residue patterns at different local scales.
+3. **Context aggregation** — masked self-attention complements the convolutional
+   features with long-range dependencies while excluding padded positions.
+4. **Dynamic residue reweighting** — a V-Net learns loss-dependent residue
+   weights from an inner meta-validation split. The held-out outer fold is not
+   used for weighting, early stopping, or checkpoint selection.
+5. **Unified task protocol** — the same architecture and protein-level
+   evaluation workflow can be applied to all six binding-site tasks.
 
-Extensive experiments across multiple ligand-binding tasks demonstrate that UniPLBind achieves strong performance among sequence-based methods and provides a unified solution for protein–ligand binding-site prediction without requiring explicit structural inputs.
+## Repository layout
 
-# 1. Requirements
-Python >= 3.10.6  
+```text
+UniPLBind/
+├── configs/                 # Example paths and task-specific settings
+├── data/                    # Compact sequence and residue-label benchmarks
+├── embeddings/              # Format documentation; large arrays are omitted
+├── scripts/
+│   ├── extract_embeddings.py
+│   └── run_cv.py            # Nested protein-level cross-validation
+├── src/uniplbind/
+│   ├── data.py
+│   ├── meta.py
+│   └── model.py
+├── tests/
+├── DATA.md
+└── requirements*.txt
+```
 
-## 2. Datasets
+Legacy exploratory scripts, IDE metadata, temporary results, checkpoints,
+figures, and duplicate data copies from the original working directory are not
+part of this curated release.
 
-UniPLBind is evaluated on multiple benchmark datasets covering diverse ligand-binding tasks, including protein, DNA, RNA, peptide, small-molecule, and ATP-binding residues. Each dataset contains protein sequences with residue-level binding annotations, where residues are labeled as binding or non-binding according to the corresponding ligand type.
+## Installation
 
-The benchmark datasets used in this project include:
-
-- **Protein-binding task**: protein–protein interaction binding-site prediction, evaluated on the PPI-70 benchmark.
-- **DNA-binding task**: DNA-binding residue prediction, evaluated on the DPI-129 benchmark.
-- **RNA-binding task**: RNA-binding residue prediction, evaluated on the RPI-117 benchmark.
-- **Peptide-binding task**: peptide-binding residue prediction, evaluated on the PepPI-639 benchmark.
-- **Small-molecule-binding task**: small-molecule-binding residue prediction, evaluated on the COACH355 benchmark.
-- **ATP-binding task**: ATP-binding residue prediction, evaluated on ATP-related benchmark datasets, including ATP-17, ATP-41, and ATP-202.
-
-These datasets provide heterogeneous ligand-binding scenarios and are used to evaluate the generalization ability of UniPLBind across different ligand modalities.
-
-# 3. How to Use
-
-## 3.1 Environment setup
-
-UniPLBind is implemented in Python with PyTorch. Before running the model, please install the required dependencies and prepare the protein language model (PLM) environments used for feature extraction.
-
-The PLM feature extraction scripts in this repository rely on pretrained protein language models. Please follow the official instructions of the corresponding PLM repositories to set up the required environments and download pretrained models.
-
-For example:
-
-- ProtTrans / ProtT5: https://github.com/agemagician/ProtTrans
-- ESM / ESM2: https://github.com/facebookresearch/esm
-
-After the required PLM environments are installed, the embedding extraction scripts can be used to generate residue-level PLM features for downstream training and prediction.
-
-## 3.2 Feature extraction
-
-To extract PLM embeddings, go to the `FeatureExtract` directory:
-
-```bash
-cd FeatureExtract
-
-Run the following scripts according to the PLM features required by the experiment:python extract_prot1024.py
-
-
-Run the following scripts according to the PLM features required by the experiment:
+Python 3.10 or later is recommended.
 
 ```bash
-python extract_prot1024.py
+git clone https://github.com/fengzhen01/UniPLBind.git
+cd UniPLBind
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
 
-This script extracts ProtTrans-based residue-level embeddings and stores the generated feature files in:
+Feature extraction additionally requires the pretrained-model dependencies:
 
-embedding/prot_embedding/
+```bash
+pip install -r requirements-extraction.txt
+```
 
-To extract ESM2-based residue-level embeddings, run:
+Install the PyTorch build appropriate for the local CPU/CUDA environment when
+the default PyPI build is not suitable.
 
-python extractdata_esm1280.py
+## Data and embeddings
 
-The generated ESM2 feature files will be stored in:
+The compact benchmark sequence/label files are included. See [DATA.md](DATA.md)
+for the task-to-file mapping and dataset notes.
 
-embedding/esm_embedding1280/
+Precomputed PLM embeddings are **not uploaded** because they are large generated
+artifacts. For example, the two embeddings for the DNA development set can be
+generated as follows:
 
-After feature extraction, return to the project root directory:
+```bash
+python scripts/extract_embeddings.py --model prostt5 \
+  --input data/dna/DNA_Train.txt \
+  --output embeddings/dna/prostt5 \
+  --labels embeddings/dna/labels
 
-cd ..
-3.3 Training and testing
+python scripts/extract_embeddings.py --model ankh \
+  --input data/dna/DNA_Train.txt \
+  --output embeddings/dna/ankh \
+  --labels embeddings/dna/labels
+```
 
-To train and evaluate UniPLBind, run the main script from the project root directory:
+Run the same commands for the corresponding independent test file when final
+independent evaluation is required. Model weights are downloaded by the
+respective upstream libraries unless a local ProstT5 path is passed with
+`--prostt5-model`.
 
-python UniPLBind.py
+## Protein-level cross-validation
 
-This script performs model training and testing using the prepared datasets and extracted PLM embeddings.
+Copy the example configuration if local paths need to be changed:
 
-For different experimental settings, please use the corresponding scripts provided in this repository. For example, five-fold cross-validation can be performed by running:
+```bash
+cp configs/datasets.example.json configs/datasets.local.json
+```
 
-python UniPLBind_5fold_cv.py
+Then run a task, for example DNA:
 
-Other scripts are provided for task-specific experiments, ablation studies, SHAP analysis, and t-SNE visualization. Users may modify the task configuration, dataset path, embedding path, and training parameters in the corresponding scripts according to their experimental requirements.
+```bash
+python scripts/run_cv.py \
+  --config configs/datasets.local.json \
+  --task dna \
+  --seed 2026 \
+  --folds 5
+```
 
-3.4 Output files
+On Windows PowerShell, use the same command on one line or replace the shell
+continuation character as appropriate. Available task keys are `protein`,
+`dna`, `rna`, `peptide`, `atp`, and `small_molecule`.
 
-During training and testing, UniPLBind outputs residue-level prediction results, including predicted binding probabilities and binary prediction labels. Depending on the script used, the output files may include:
+The runner implements:
 
-residue-level prediction scores;
-evaluation metrics such as SEN, SPE, ACC, PRE, F1, MCC, AUROC, and AUPRC;
-ROC and precision-recall curve data;
-visualization results for residue-level score maps, heatmaps, SHAP attribution, and t-SNE analysis.
+- protein-level outer folds;
+- an 80:20 primary-training/meta-validation split inside each outer fold;
+- focal loss during warm-up;
+- differentiable V-Net updates after warm-up;
+- padded-residue masking;
+- early stopping based only on meta-validation loss; and
+- fold-wise plus mean/standard-deviation output for SEN, SPE, PRE, F1, MCC,
+  AUROC, and AUPRC.
 
-The output files are saved in the corresponding result or visualization folders specified in each script.
+The independent test set listed in the configuration is deliberately not read
+by `run_cv.py`; it remains sealed during model development.
 
-3.5 Notes
-Please make sure that the extracted PLM embeddings match the protein sequences used in the corresponding datasets.
-The sequence length should be consistent with the length of residue-level labels and prediction outputs.
-GPU acceleration is recommended for PLM embedding extraction and model training.
-Some scripts correspond to specific experiments reported in the manuscript, including ablation studies, SHAP analysis, and t-SNE visualization.
-If you use different PLM embeddings or datasets, please update the corresponding file paths and input dimensions in the scripts.
+## Smoke test
 
-If you have any questions or encounter problems when using UniPLBind, please open an issue in this repository.
-   
+```bash
+pip install pytest
+pytest -q
+```
+
+## Reproducibility notes
+
+- Generated embeddings must use the same PLM family and residue-token alignment
+  described in `embeddings/README.md`.
+- Task-specific focal-loss class weights are explicit in the JSON configuration.
+- Random seeds, split counts, training budgets, and learning rates are command-line
+  parameters rather than hard-coded machine paths.
+- Results and checkpoints are written under `outputs/`, which is ignored by Git.
+
+## Citation
+
+The UniPLBind manuscript is in preparation. If this repository supports your
+work, please cite the accompanying article once its bibliographic information
+is available. The README will be updated with the final citation and DOI.
+
+## Scope
+
+UniPLBind is intended for computational research. Predicted binding residues
+require experimental validation and should not be treated as clinical or
+therapeutic evidence.
+
